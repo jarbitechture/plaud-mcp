@@ -30,3 +30,13 @@ Auth flow: `encryption.json` (Chromium v10 AES-128-CBC) → macOS Keychain "Plau
 - **Token valid ~300 days** — JWT `exp` is ~10 months from issue
 - **`data_file_total` in API response** = count of files in current page, not true total
 - **Plaud data dir**: `~/Library/Application Support/Plaud/`
+
+## Transcripts Archive
+
+`transcripts/` contains indexed markdown files of Plaud recordings with frontmatter metadata (date, duration, speakers, tags, type).
+
+- **Rebuild**: `.venv/bin/python transcripts/_build.py` (fetches last 14 days from API)
+- **Index**: `transcripts/INDEX.md` — date-sorted table with links
+- **Types**: `work`, `personal`, `trivial` — auto-classified by content
+- **Tags**: auto-generated from title/content keywords (AI, MDM, team-sync, etc.)
+- **Query from Claude**: read INDEX.md first, then read specific transcript files by date/topic
