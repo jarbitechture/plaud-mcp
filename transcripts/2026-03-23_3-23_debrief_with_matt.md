@@ -9,6 +9,29 @@ tags: [AI, meeting]
 type: work
 ---
 
+## Tasks (Elliot)
+
+| Describe what you did | Hours |
+|----------------------|-------|
+| If I pull back and I say we have a dozen things that we're working on, Then that would include things like the um any any extension that Drew has a... | 1.0 |
+| That's all I know is he's my boss, and I've even talked to Mike Hodelin, and he's like," I don't even know your uh primary you know. | 1.0 |
+| But, that's a lot of what I am working on right now is sussing out how much education is needed for whether a workforce or otherwise. | 1.0 |
+| Doesn't matter, it needs to present itself. | 1.0 |
+| In terms of like you and I setting up all this connector abilities with y'all on. | 2.0 |
+| What am I working on? | 1.0 |
+| Literally, that's yeah it that's all I am working on. | 1.0 |
+| It's trying to get courses set up for Drew that will help the executive staff. | 1.0 |
+| There was a co pilot course for executives that I tried to set up for this week that he kind of dropped, right? | 1.0 |
+| Oh, here, you know, this is what you know you're working on. | 1.0 |
+| You know, whatever like I know what I need to do here, just by talking to people, it's obvious, right. | 1.0 |
+| Yeah, no, I haven't set up anything on that server yet because i i want to make sure i understand how to use it from a mac perspective too. | 1.0 |
+| I mean, you are essentially then you are kind of getting into the server, right? | 1.0 |
+| Then you know, You unfortunately I'm going to ask you to help me lean in on some of the stuff you think is going to be like things that we could de... | 1.0 |
+| The Jetson No, I haven't really looked at that. | 1.0 |
+| I've just been looking at the ones that have been, Like everyone's the one you know, the ones that everyone is talking about, the fastest ones, the... | 1.0 |
+| These conversations, i want to put together some kind of AI roadmap. | 2.0 |
+| **Total** | **19.0** |
+
 ## Summary
 
 No summary available

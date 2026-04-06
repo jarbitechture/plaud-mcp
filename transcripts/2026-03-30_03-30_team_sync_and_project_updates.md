@@ -9,6 +9,17 @@ tags: [AI, meeting, project-update, team-sync]
 type: work
 ---
 
+## Tasks (Elliot)
+
+| Describe what you did | Hours |
+|----------------------|-------|
+| So, I am working on kind of both of those things in parallel, along with a guide that folks can use for our prompting. | 1.0 |
+| But apart from that, It's really just been looking at AI labs and the kind of rollout that I am looking for with that and kind of talking to. | 2.0 |
+| Talking to Chris and Larry, you've been kind of included in some of these conversations on the direction, the type of trainings that we might want ... | 1.0 |
+| So, it's just been a lot of strategy around building that up and then having the correct approvals in place for something like an AI guideline that... | 2.0 |
+| Totally totally totally yeah So like just a smaller group essentially. | 1.0 |
+| **Total** | **7.0** |
+
 ## Summary
 
 No summary available

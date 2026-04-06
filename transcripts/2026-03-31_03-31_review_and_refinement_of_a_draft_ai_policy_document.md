@@ -9,6 +9,19 @@ tags: [AI, policy]
 type: work
 ---
 
+## Tasks (Elliot)
+
+| Describe what you did | Hours |
+|----------------------|-------|
+| A handbook document, which I think we're also going over later in the week. | 1.0 |
+| So just to give you some background, I put together the policy documents that your. | 2.0 |
+| Or we're probably going over today. | 1.0 |
+| It's it's essentially just um templates that I've been using. | 1.0 |
+| Because I think to some level, um, They'll probably and I think they already have taken some of the language that I've put in the document here tha... | 1.0 |
+| I've been writing it, I've been writing those as well. | 1.0 |
+| I don't know if he wrote that what I had seen or not, But it was basically like maybe his first draft, and it included some of the AI, you know, po... | 1.0 |
+| **Total** | **8.0** |
+
 ## Summary
 
 No summary available

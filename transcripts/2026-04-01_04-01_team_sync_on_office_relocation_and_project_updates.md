@@ -9,6 +9,15 @@ tags: [AI, office-move, project-update, team-sync]
 type: work
 ---
 
+## Tasks (Elliot)
+
+| Describe what you did | Hours |
+|----------------------|-------|
+| Um, Been working just kind of pounding away on some of the um the work group AI working group material as well as um. | 1.0 |
+| And so I finished that, and kind of want to show. | 1.0 |
+| I'll probably hook up with Matt this afternoon to kind of go through some stuff before his short days, and I have a meeting with Larry. | 0.5 |
+| **Total** | **2.5** |
+
 ## Summary
 
 No summary available

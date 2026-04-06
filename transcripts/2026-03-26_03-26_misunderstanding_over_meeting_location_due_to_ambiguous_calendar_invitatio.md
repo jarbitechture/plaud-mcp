@@ -9,6 +9,10 @@ tags: [AI, meeting, team-sync]
 type: work
 ---
 
+## Tasks (Elliot)
+
+No tasks extracted
+
 ## Summary
 
 No summary available

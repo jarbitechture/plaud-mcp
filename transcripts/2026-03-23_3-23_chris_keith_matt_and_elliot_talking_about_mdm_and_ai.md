@@ -9,6 +9,18 @@ tags: [AI, MDM, meeting]
 type: work
 ---
 
+## Tasks (Elliot)
+
+| Describe what you did | Hours |
+|----------------------|-------|
+| I just don't know in the meantime, what my I guess my concern is in the meantime, when when all this is being built by you guys, how do you envisio... | 1.0 |
+| I totally agree with you as a learning activity, but I also see the demand for the, I mean, coming from my experience, I also see the demand for an... | 1.0 |
+| And to that degree, you know, You might be looking at Chris embedding or already having an an a system, right? | 1.0 |
+| And, what Matt is saying is that getting that connector even tested is going to be a iterative project. | 2.0 |
+| As we know, Matt, we we talked to the utilities folks, right? | 1.0 |
+| Yeah, but I don't I don't have everything I need access wise, And that's also a problem because if I am working on all this AI stuff in parallel wi... | 1.0 |
+| **Total** | **7.0** |
+
 ## Summary
 
 No summary available

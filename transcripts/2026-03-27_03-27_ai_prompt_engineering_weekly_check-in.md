@@ -9,6 +9,15 @@ tags: [1-on-1, AI, prompt-engineering]
 type: work
 ---
 
+## Tasks (Elliot)
+
+| Describe what you did | Hours |
+|----------------------|-------|
+| You know, I want to set up a reminder for thus and thus. | 1.0 |
+| I'm sure you could, but yeah, you can set up reminders. | 1.0 |
+| Working on the the one I'm currently working on for the group. | 1.0 |
+| **Total** | **3.0** |
+
 ## Summary
 
 No summary available

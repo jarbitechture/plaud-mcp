@@ -3,13 +3,22 @@
 
 Run from project root:
     .venv/bin/python transcripts/_build.py
+
+Features:
+- Fetches transcripts and summaries from Plaud API
+- Extracts tasks from Elliot's speaking segments via Ollama (phi4)
+- Writes structured markdown with YAML frontmatter
+- Builds INDEX.md with task descriptions and hours
 """
 
 import asyncio
+import json
 import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+
+import httpx
 
 # Add project src to path so we can import plaud_client
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -51,6 +60,179 @@ def detect_device(file: dict) -> str:
     if scene == 1 or serial.startswith(NOTEPIN_SERIAL_PREFIX):
         return "NotePin"
     return "Desktop"
+
+
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "phi4"
+
+# Speaker names that map to the user (Elliot)
+ELLIOT_SPEAKERS = {"Elliot A. Jarbe", "Ej", "Elliot"}
+
+# Verbs/phrases that signal a task in spoken updates
+TASK_SIGNALS = [
+    "working on", "worked on", "been working", "finishing", "finished",
+    "meeting with", "met with", "had a meeting", "have a meeting",
+    "submitted", "submitting", "sending", "sent", "deployed", "deploying",
+    "reviewed", "reviewing", "created", "creating", "built", "building",
+    "put together", "putting together", "set up", "setting up",
+    "talking to", "talked to", "spoke with", "discussing",
+    "looking at", "looked at", "going over", "went over",
+    "helping", "helped", "assisted", "coordinating",
+    "writing", "wrote", "drafting", "drafted",
+    "testing", "tested", "debugging", "fixed", "fixing",
+    "researching", "researched", "investigating",
+    "preparing", "prepared", "planning", "planned",
+    "presenting", "presented", "showing", "showed",
+    "cleaning up", "refactoring", "updating", "updated",
+]
+
+# Keywords for estimating hours
+QUICK_KEYWORDS = ["email", "ping", "quick", "brief", "short", "minute"]
+MEETING_KEYWORDS = ["meeting", "call", "sync", "check-in", "session", "discussion"]
+PROJECT_KEYWORDS = [
+    "labs", "policy", "guidelines", "framework", "roadmap", "strategy",
+    "connector", "deployment", "architecture", "design", "react", "site",
+    "cookbook", "curriculum", "rollout",
+]
+
+
+def extract_elliot_segments(segments: list[dict]) -> str:
+    """Pull out segments where Elliot is speaking."""
+    parts = []
+    for seg in segments:
+        speaker = seg.get("speaker", "").strip()
+        if speaker in ELLIOT_SPEAKERS:
+            content = seg.get("content", "").strip()
+            if content:
+                parts.append(content)
+    return " ".join(parts)
+
+
+def _estimate_hours(sentence: str) -> float:
+    """Estimate hours for a task based on keyword signals."""
+    s = sentence.lower()
+    if any(kw in s for kw in QUICK_KEYWORDS):
+        return 0.5
+    if any(kw in s for kw in MEETING_KEYWORDS):
+        return 1.0
+    if any(kw in s for kw in PROJECT_KEYWORDS):
+        return 2.0
+    if "all day" in s or "full day" in s or "most of the day" in s:
+        return 6.0
+    if "half day" in s or "half a day" in s or "this morning" in s or "this afternoon" in s:
+        return 3.0
+    return 1.0
+
+
+def _split_into_sentences(text: str) -> list[str]:
+    """Split text into rough sentences."""
+    # Split on sentence-ending punctuation, keeping reasonable chunks
+    raw = re.split(r"(?<=[.!?])\s+", text)
+    sentences = []
+    for s in raw:
+        s = s.strip()
+        if len(s) > 20:
+            sentences.append(s)
+    return sentences
+
+
+def extract_tasks_heuristic(elliot_text: str) -> list[dict]:
+    """Extract tasks from Elliot's segments using pattern matching."""
+    if not elliot_text or len(elliot_text) < 30:
+        return []
+
+    sentences = _split_into_sentences(elliot_text)
+    tasks = []
+    seen = set()
+
+    for sentence in sentences:
+        s_lower = sentence.lower()
+        # Check if this sentence contains a task signal
+        if not any(signal in s_lower for signal in TASK_SIGNALS):
+            continue
+
+        # Clean up the sentence into a task description
+        desc = sentence.strip()
+        # Truncate long sentences
+        if len(desc) > 150:
+            desc = desc[:147] + "..."
+
+        # Deduplicate similar tasks (first 40 chars)
+        key = desc[:40].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        hours = _estimate_hours(desc)
+        tasks.append({"description": desc, "hours": hours})
+
+    return tasks
+
+
+async def _ollama_available() -> bool:
+    """Check if Ollama is reachable."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("http://localhost:11434/api/tags", timeout=2.0)
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
+TASK_EXTRACTION_PROMPT = """You are a time-tracking assistant. Given a person's spoken update from a meeting transcript, extract their work tasks.
+
+For each task, output a JSON array of objects with:
+- "description": one sentence describing what was done or is being worked on
+- "hours": estimated hours spent (float, use 0.5 for quick tasks, 1-2 for meetings, 2-4 for project work, 4-8 for full-day efforts)
+
+Only extract concrete work tasks. Skip small talk, questions to others, and non-work discussion.
+If there are no work tasks, return an empty array: []
+
+Respond with ONLY the JSON array, no other text.
+
+Meeting transcript excerpt (speaker's segments only):
+{text}"""
+
+
+async def extract_tasks_via_ollama(elliot_text: str) -> list[dict]:
+    """Use local Ollama to extract tasks. Falls back to heuristic if unavailable."""
+    if not elliot_text or len(elliot_text) < 30:
+        return []
+
+    text = elliot_text[:3000]
+    prompt = TASK_EXTRACTION_PROMPT.format(text=text)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                OLLAMA_URL,
+                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+                timeout=60.0,
+            )
+            if resp.status_code != 200:
+                return []
+            body = resp.json()
+            raw = body.get("response", "").strip()
+            match = re.search(r"\[.*\]", raw, re.DOTALL)
+            if match:
+                tasks = json.loads(match.group())
+                return [
+                    {"description": t.get("description", ""), "hours": float(t.get("hours", 0))}
+                    for t in tasks
+                    if t.get("description")
+                ]
+    except Exception:
+        pass
+    return []
+
+
+async def extract_tasks(elliot_text: str, use_ollama: bool) -> list[dict]:
+    """Extract tasks — Ollama if available, otherwise heuristic."""
+    if use_ollama:
+        tasks = await extract_tasks_via_ollama(elliot_text)
+        if tasks:
+            return tasks
+    return extract_tasks_heuristic(elliot_text)
 
 
 PERSONAL_KEYWORDS = [
@@ -140,6 +322,23 @@ def build_transcript_text(segments: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
+def format_tasks_section(tasks: list[dict]) -> str:
+    """Format tasks as a markdown table."""
+    if not tasks:
+        return "No tasks extracted"
+    lines = [
+        "| Describe what you did | Hours |",
+        "|----------------------|-------|",
+    ]
+    for t in tasks:
+        desc = t["description"].replace("|", "\\|")
+        hours = f"{t['hours']:.1f}"
+        lines.append(f"| {desc} | {hours} |")
+    total = sum(t["hours"] for t in tasks)
+    lines.append(f"| **Total** | **{total:.1f}** |")
+    return "\n".join(lines)
+
+
 def write_markdown(
     file_id: str,
     title: str,
@@ -149,6 +348,7 @@ def write_markdown(
     speakers: list[str],
     tags: list[str],
     file_type: str,
+    tasks: list[dict],
     summary_text: str,
     transcript_text: str,
     output_path: Path,
@@ -158,6 +358,7 @@ def write_markdown(
 
     # Escape quotes in title for YAML
     safe_title = title.replace('"', '\\"')
+    tasks_section = format_tasks_section(tasks)
 
     content = f"""---
 id: {file_id}
@@ -169,6 +370,10 @@ speakers: [{speakers_yaml}]
 tags: [{tags_yaml}]
 type: {file_type}
 ---
+
+## Tasks (Elliot)
+
+{tasks_section}
 
 ## Summary
 
@@ -232,6 +437,15 @@ async def process_file(client: PlaudClient, file: dict, results: list[dict]) -> 
     file_type = classify_type(title, transcript_text, duration_ms)
     device = detect_device(file)
 
+    # Extract tasks from Elliot's segments (skip personal/trivial)
+    tasks: list[dict] = []
+    if file_type == "work" and segments:
+        elliot_text = extract_elliot_segments(segments)
+        if elliot_text:
+            tasks = await extract_tasks(elliot_text, use_ollama=_USE_OLLAMA)
+            if tasks:
+                print(f"    Extracted {len(tasks)} tasks ({sum(t['hours'] for t in tasks):.1f}h)")
+
     # Write markdown
     safe_name = sanitize_filename(title)
     filename = f"{date_str}_{safe_name}.md"
@@ -246,10 +460,15 @@ async def process_file(client: PlaudClient, file: dict, results: list[dict]) -> 
         speakers=speakers,
         tags=tags,
         file_type=file_type,
+        tasks=tasks,
         summary_text=summary_text,
         transcript_text=transcript_text,
         output_path=output_path,
     )
+
+    # Build task summary for index
+    task_desc = "; ".join(t["description"] for t in tasks) if tasks else "-"
+    task_hours = f"{sum(t['hours'] for t in tasks):.1f}" if tasks else "-"
 
     results.append({
         "file_id": file_id,
@@ -260,6 +479,8 @@ async def process_file(client: PlaudClient, file: dict, results: list[dict]) -> 
         "speakers": speakers,
         "tags": tags,
         "type": file_type,
+        "task_desc": task_desc,
+        "task_hours": task_hours,
         "filename": filename,
     })
     print(f"    Wrote: {filename}")
@@ -275,17 +496,18 @@ def write_index(results: list[dict]) -> None:
         f"Generated: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         f"Total files: {len(results)}",
         "",
-        "| Date | Title | Duration | Device | Type | Tags | Speakers |",
-        "|------|-------|----------|--------|------|------|----------|",
+        "| Date | Title | Duration | Device | Type | Describe what you did | Hours | Tags |",
+        "|------|-------|----------|--------|------|-----------------------|-------|------|",
     ]
 
     for r in results:
         link = f"[{r['title']}]({r['filename']})"
         tags = ", ".join(r["tags"]) if r["tags"] else "-"
-        speakers = ", ".join(r["speakers"]) if r["speakers"] else "-"
         device = r.get("device", "?")
+        task_desc = r.get("task_desc", "-")
+        task_hours = r.get("task_hours", "-")
         lines.append(
-            f"| {r['date']} | {link} | {r['duration']} | {device} | {r['type']} | {tags} | {speakers} |"
+            f"| {r['date']} | {link} | {r['duration']} | {device} | {r['type']} | {task_desc} | {task_hours} | {tags} |"
         )
 
     lines.append("")
@@ -294,13 +516,25 @@ def write_index(results: list[dict]) -> None:
     print(f"\nWrote INDEX.md with {len(results)} entries")
 
 
+_USE_OLLAMA = False  # Set in main() after detection
+
+
 async def main() -> None:
+    global _USE_OLLAMA
+
     print(f"Fetching Plaud files from the last {DAYS} days...")
     client = PlaudClient()
 
     if not client.is_available():
         print("ERROR: Plaud Desktop not available. Is it installed and signed in?")
         sys.exit(1)
+
+    # Detect Ollama for task extraction
+    _USE_OLLAMA = await _ollama_available()
+    if _USE_OLLAMA:
+        print(f"Ollama detected — using {OLLAMA_MODEL} for task extraction")
+    else:
+        print("Ollama not available — using heuristic task extraction")
 
     files = await client.get_recent_files(days=DAYS)
     print(f"Found {len(files)} files\n")
