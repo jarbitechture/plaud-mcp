@@ -127,22 +127,43 @@ class PlaudClient:
         return response.json()
 
     async def _fetch_content_url(self, url: str) -> Any:
-        """Fetch content from a signed S3 URL, handling gzip."""
+        """Fetch content from a signed S3 URL. Handles gzip and returns either
+        parsed JSON (dict/list) or plain text — Plaud serves transcripts as
+        gzipped JSON and summaries as text/plain markdown."""
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=30.0)
             response.raise_for_status()
             content = response.content
             if content[:2] == b"\x1f\x8b":
                 content = gzip.decompress(content)
-            return json.loads(content)
+            try:
+                return json.loads(content)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return content.decode("utf-8", errors="replace")
+
+    async def _get_content_entry(self, file_id: str, data_type: str) -> dict[str, Any] | None:
+        """Find a content_list entry by data_type. Returns None if absent."""
+        detail = await self.get_file_detail(file_id)
+        entries = list(detail.get("content_list") or []) + list(
+            detail.get("pre_download_content_list") or []
+        )
+        for entry in entries:
+            if entry and entry.get("data_type") == data_type:
+                return entry
+        return None
 
     async def _get_content_by_type(self, file_id: str, data_type: str, label: str) -> Any:
         """Fetch file content (transcript, summary, etc.) by data_type."""
-        detail = await self.get_file_detail(file_id)
-        for content in detail.get("content_list", []):
-            if content.get("data_type") == data_type:
-                return await self._fetch_content_url(content["data_link"])
-        raise PlaudAPIError(404, f"No {label} available for file {file_id}")
+        entry = await self._get_content_entry(file_id, data_type)
+        if entry is None:
+            raise PlaudAPIError(404, f"No {label} available for file {file_id}")
+        if entry.get("task_status") not in (1, None):
+            raise PlaudAPIError(
+                409,
+                f"{label} not ready (task_status={entry.get('task_status')}, "
+                f"err={entry.get('err_msg') or entry.get('err_code') or 'none'})",
+            )
+        return await self._fetch_content_url(entry["data_link"])
 
     async def get_files(
         self,
@@ -163,10 +184,26 @@ class PlaudClient:
         return response.get("data_file_list", [])
 
     async def get_file_count(self) -> int:
+        # Plaud's data_file_total is min(actual_total, limit), so a small limit
+        # under-reports. Request a high limit to force the true count.
         response = await self._fetch(
-            "/file/simple/web", params={"skip": 0, "limit": 1}
+            "/file/simple/web", params={"skip": 0, "limit": 1000}
         )
-        return response.get("data_file_total", 0)
+        total = response.get("data_file_total", 0)
+        returned = len(response.get("data_file_list") or [])
+        # If the API capped us at 1000, paginate the remainder.
+        if returned >= 1000:
+            skip = 1000
+            while True:
+                page = await self._fetch(
+                    "/file/simple/web", params={"skip": skip, "limit": 1000}
+                )
+                page_len = len(page.get("data_file_list") or [])
+                total += page.get("data_file_total", 0)
+                if page_len < 1000:
+                    break
+                skip += 1000
+        return total
 
     async def get_file(self, file_id: str) -> dict[str, Any]:
         return await self.get_file_detail(file_id)

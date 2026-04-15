@@ -80,12 +80,18 @@ async def get_summary(file_id: str) -> dict[str, Any]:
     """Get AI-generated summary for a Plaud file."""
     try:
         data = await client.get_summary(file_id)
-        return {
-            "file_id": file_id,
-            "content": data.get("ai_content", ""),
-            "header": data.get("header", ""),
-            "category": data.get("category", ""),
-        }
+        # Plaud serves summaries as plain markdown (str). Older shapes may wrap
+        # them in a JSON object — handle both.
+        if isinstance(data, str):
+            return {"file_id": file_id, "content": data, "format": "markdown"}
+        if isinstance(data, dict):
+            return {
+                "file_id": file_id,
+                "content": data.get("ai_content") or data.get("content", ""),
+                "header": data.get("header", ""),
+                "category": data.get("category", ""),
+            }
+        return {"file_id": file_id, "content": str(data)}
     except PlaudAPIError as e:
         return {"file_id": file_id, "error": str(e)}
 
@@ -150,13 +156,31 @@ async def check_connection() -> dict[str, Any]:
 
 
 def _format_file(file: dict[str, Any]) -> dict[str, Any]:
+    # The list endpoint (/file/simple/web) returns {id, filename, is_trans, is_summary}.
+    # The detail endpoint (/file/detail/{id}) returns {file_id, file_name, content_list}
+    # with no boolean flags, so we derive them from content_list.
+    content_list = list(file.get("content_list") or []) + list(
+        file.get("pre_download_content_list") or []
+    )
+    has_transcript = file.get("is_trans")
+    has_summary = file.get("is_summary")
+    if has_transcript is None:
+        has_transcript = any(
+            c and c.get("data_type") == "transaction" and c.get("task_status") == 1
+            for c in content_list
+        )
+    if has_summary is None:
+        has_summary = any(
+            c and c.get("data_type") == "auto_sum_note" and c.get("task_status") == 1
+            for c in content_list
+        )
     return {
-        "id": file.get("id"),
-        "filename": file.get("filename"),
+        "id": file.get("id") or file.get("file_id"),
+        "filename": file.get("filename") or file.get("file_name"),
         "date": _format_timestamp(file.get("start_time")),
         "duration": _format_duration(file.get("duration")),
-        "has_transcript": file.get("is_trans", False),
-        "has_summary": file.get("is_summary", False),
+        "has_transcript": bool(has_transcript),
+        "has_summary": bool(has_summary),
     }
 
 
