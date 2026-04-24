@@ -6,10 +6,15 @@ import logging
 import os
 import sys
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
 
+from .audio import AudioAnalysis
+from .audio.diarize import diarize
+from .audio.pipeline import analyze
+from .audio.transcribe import transcribe
 from .plaud_client import PlaudAPIError, PlaudClient
 
 logging.basicConfig(
@@ -58,17 +63,18 @@ async def get_transcript(file_id: str) -> dict[str, Any]:
     try:
         data = await client.get_transcript(file_id)
         if isinstance(data, list):
-            lines = []
-            for seg in data:
-                speaker = seg.get("speaker", "")
-                content = seg.get("content", "")
+            segs: list[dict[str, Any]] = cast(list[dict[str, Any]], data)
+            lines: list[str] = []
+            for seg in segs:
+                speaker: str = str(seg.get("speaker", ""))
+                content: str = str(seg.get("content", ""))
                 if content:
                     lines.append(f"**{speaker}:** {content}" if speaker else content)
             return {
                 "file_id": file_id,
                 "transcript": "\n\n".join(lines),
-                "segment_count": len(data),
-                "segments": data[:10],
+                "segment_count": len(segs),
+                "segments": segs[:10],
             }
         return {"file_id": file_id, "transcript": str(data)}
     except PlaudAPIError as e:
@@ -105,8 +111,9 @@ async def search_transcripts(query: str, days: int = 30) -> list[dict[str, Any]]
                 data = await client.get_transcript(file["id"])
                 transcript_text = ""
                 if isinstance(data, list):
+                    segs_list: list[dict[str, Any]] = cast(list[dict[str, Any]], data)
                     transcript_text = "\n".join(
-                        seg.get("content", "") for seg in data if seg.get("content")
+                        str(s.get("content", "")) for s in segs_list if s.get("content")
                     )
                 if title_match or query_lower in transcript_text.lower():
                     return {
@@ -128,6 +135,27 @@ async def search_transcripts(query: str, days: int = 30) -> list[dict[str, Any]]
 async def get_file_count() -> dict[str, int]:
     """Get the total number of Plaud files."""
     return {"total": await client.get_file_count()}
+
+
+@mcp.tool()
+async def analyze_audio(
+    audio_path: str,
+    language: str | None = None,
+    num_speakers: int | None = None,
+    return_word_timestamps: bool = True,
+) -> AudioAnalysis:
+    """Analyze audio file with ASR + speaker diarization."""
+    return await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: analyze(
+            audio_path=Path(audio_path),
+            transcriber=transcribe,
+            diarizer=diarize,
+            language=language,
+            num_speakers=num_speakers,
+            return_word_timestamps=return_word_timestamps,
+        ),
+    )
 
 
 @mcp.tool()
