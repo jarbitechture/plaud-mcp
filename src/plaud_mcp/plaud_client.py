@@ -126,22 +126,29 @@ class PlaudClient:
             raise PlaudAPIError(response.status_code, response.text[:300])
         return response.json()
 
-    async def _fetch_content_url(self, url: str) -> Any:
-        """Fetch content from a signed S3 URL, handling gzip."""
+    async def _fetch_content_bytes(self, url: str) -> bytes:
+        """Fetch content from a signed S3 URL, decompressing gzip when present."""
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=30.0)
             response.raise_for_status()
             content = response.content
             if content[:2] == b"\x1f\x8b":
                 content = gzip.decompress(content)
-            return json.loads(content)
+            return content
+
+    async def _fetch_content_url(self, url: str) -> Any:
+        """Fetch and JSON-decode content from a signed S3 URL."""
+        return json.loads(await self._fetch_content_bytes(url))
 
     async def _get_content_by_type(self, file_id: str, data_type: str, label: str) -> Any:
         """Fetch file content (transcript, summary, etc.) by data_type."""
         detail = await self.get_file_detail(file_id)
         for content in detail.get("content_list", []):
             if content.get("data_type") == data_type:
-                return await self._fetch_content_url(content["data_link"])
+                link = content.get("data_link")
+                if not link:
+                    raise PlaudAPIError(404, f"No {label} data_link for file {file_id}")
+                return await self._fetch_content_url(link)
         raise PlaudAPIError(404, f"No {label} available for file {file_id}")
 
     async def get_files(
@@ -179,7 +186,21 @@ class PlaudClient:
         return await self._get_content_by_type(file_id, "transaction", "transcript")
 
     async def get_summary(self, file_id: str) -> Any:
-        return await self._get_content_by_type(file_id, "auto_sum_note", "summary")
+        detail = await self.get_file_detail(file_id)
+        for content in detail.get("content_list", []):
+            if content.get("data_type") == "auto_sum_note":
+                link = content.get("data_link")
+                if not link:
+                    raise PlaudAPIError(404, f"No summary data_link for file {file_id}")
+                raw = await self._fetch_content_bytes(link)
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict) and "ai_content" in parsed:
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+                return {"ai_content": raw.decode("utf-8", errors="replace")}
+        raise PlaudAPIError(404, f"No summary available for file {file_id}")
 
     async def get_recent_files(self, days: int = 7) -> list[dict[str, Any]]:
         cutoff_ms = int((time.time() - days * 24 * 60 * 60) * 1000)

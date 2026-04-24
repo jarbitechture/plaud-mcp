@@ -43,3 +43,7 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Transcript pipeline logs (runtime output)
+transcripts/_build.log
+transcripts/_http.log

@@ -210,7 +210,12 @@ def _extract_excerpt(text: str, query: str, context_chars: int = 200) -> str:
 def main():
     if not client.is_available():
         logger.warning("Plaud Desktop not found or not signed in.")
-    transport = "streamable-http" if "--http" in sys.argv else "stdio"
+    if "--sse" in sys.argv:
+        transport = "sse"
+    elif "--http" in sys.argv:
+        transport = "streamable-http"
+    else:
+        transport = "stdio"
     try:
         mcp.run(transport=transport)
     except KeyboardInterrupt:
