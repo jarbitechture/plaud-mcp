@@ -17,7 +17,7 @@ pyright src/                 # Type check
 
 ```
 src/plaud_mcp/
-  server.py        — FastMCP server, 8 tools (get_files, get_transcript, search_transcripts, etc.)
+  server.py        — FastMCP server, 13 tools (get_files, get_transcript, list_folders, move_files_to_folder, etc.)
   plaud_client.py  — HTTP client: decrypts JWT from Plaud Desktop's encryption.json via macOS Keychain
 ```
 

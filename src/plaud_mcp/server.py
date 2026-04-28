@@ -137,6 +137,66 @@ async def get_file_count() -> dict[str, int]:
 
 
 @mcp.tool()
+async def list_folders() -> list[dict[str, Any]]:
+    """List all user folders. Plaud calls them 'filetags' internally; the id
+    returned here is what move_files_to_folder expects."""
+    try:
+        return await client.list_folders()
+    except PlaudAPIError as e:
+        return [{"error": str(e)}]
+
+
+@mcp.tool()
+async def create_folder(name: str) -> dict[str, Any]:
+    """Create a new folder. Returns {id, name, icon, color}."""
+    try:
+        return await client.create_folder(name=name)
+    except PlaudAPIError as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def delete_folder(folder_id: str) -> dict[str, Any]:
+    """Delete a folder by id. WARNING: any files inside are moved to TRASH;
+    move them out first if you want to preserve them."""
+    try:
+        await client.delete_folder(folder_id)
+        return {"status": "deleted", "folder_id": folder_id}
+    except PlaudAPIError as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def move_file_to_folder(
+    file_id: str, folder_id: str | None = None
+) -> dict[str, Any]:
+    """Move a single file into a folder. Pass folder_id=None or '' to move it
+    back to Unfiled."""
+    try:
+        await client.move_files([file_id], folder_id)
+        return {"status": "moved", "file_id": file_id, "folder_id": folder_id or ""}
+    except PlaudAPIError as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def move_files_to_folder(
+    file_ids: list[str], folder_id: str | None = None
+) -> dict[str, Any]:
+    """Move multiple files into a folder in one batch. Pass folder_id=None or
+    '' to move them back to Unfiled."""
+    try:
+        await client.move_files(file_ids, folder_id)
+        return {
+            "status": "moved",
+            "count": len(file_ids),
+            "folder_id": folder_id or "",
+        }
+    except PlaudAPIError as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
 async def check_connection() -> dict[str, Any]:
     """Check if Plaud Desktop is available and authenticated."""
     try:
@@ -174,6 +234,7 @@ def _format_file(file: dict[str, Any]) -> dict[str, Any]:
             c and c.get("data_type") == "auto_sum_note" and c.get("task_status") == 1
             for c in content_list
         )
+    folder_ids = file.get("filetag_id_list") or []
     return {
         "id": file.get("id") or file.get("file_id"),
         "filename": file.get("filename") or file.get("file_name"),
@@ -181,6 +242,7 @@ def _format_file(file: dict[str, Any]) -> dict[str, Any]:
         "duration": _format_duration(file.get("duration")),
         "has_transcript": bool(has_transcript),
         "has_summary": bool(has_summary),
+        "folder_ids": folder_ids,
     }
 
 

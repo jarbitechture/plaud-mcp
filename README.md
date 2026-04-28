@@ -63,6 +63,11 @@ No API keys or tokens needed. Just ensure Plaud Desktop is running.
 | `get_transcript` | Full transcript with speaker labels |
 | `get_summary` | AI-generated summary |
 | `search_transcripts` | Search transcripts by content |
+| `list_folders` | List all user folders (Plaud calls them "filetags" internally) |
+| `create_folder` | Create a new folder by name |
+| `delete_folder` | Delete a folder by id (warning: files inside go to Trash) |
+| `move_file_to_folder` | Move a single file into a folder, or out to Unfiled |
+| `move_files_to_folder` | Batch-move multiple files into a folder in one call |
 
 ## Troubleshooting
 

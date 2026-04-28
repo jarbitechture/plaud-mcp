@@ -107,23 +107,39 @@ class PlaudClient:
             return False
 
     async def _fetch(
-        self, endpoint: str, params: dict[str, Any] | None = None
+        self,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        method: str = "GET",
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Make an authenticated API call to Plaud."""
         url = f"{API_BASE}{endpoint}"
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url, params=params, headers=self._headers(), timeout=15.0
+            response = await client.request(
+                method,
+                url,
+                params=params,
+                json=json_body,
+                headers=self._headers(),
+                timeout=15.0,
             )
         if response.status_code == 401:
             # Token may have expired — clear cache and retry once
             self._token = None
             async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    url, params=params, headers=self._headers(), timeout=15.0
+                response = await client.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json_body,
+                    headers=self._headers(),
+                    timeout=15.0,
                 )
-        if response.status_code != 200:
+        if response.status_code not in (200, 204):
             raise PlaudAPIError(response.status_code, response.text[:300])
+        if response.status_code == 204 or not response.content:
+            return {}
         return response.json()
 
     async def _fetch_content_url(self, url: str) -> Any:
@@ -222,3 +238,34 @@ class PlaudClient:
         cutoff_ms = int((time.time() - days * 24 * 60 * 60) * 1000)
         files = await self.get_files(limit=100)
         return [f for f in files if f.get("start_time", 0) >= cutoff_ms]
+
+    async def list_folders(self) -> list[dict[str, Any]]:
+        """List all user folders. Plaud calls them 'filetags' internally."""
+        response = await self._fetch("/filetag/")
+        return response.get("data_filetag_list", [])
+
+    async def create_folder(
+        self, name: str, icon: str = "e627", color: str = "#191919"
+    ) -> dict[str, Any]:
+        """Create a folder. Returns {id, name, icon, color}."""
+        response = await self._fetch(
+            "/filetag/",
+            method="POST",
+            json_body={"name": name, "icon": icon, "color": color},
+        )
+        return response.get("data_filetag", {})
+
+    async def delete_folder(self, folder_id: str) -> None:
+        """Delete a folder. WARNING: any files inside are moved to Trash."""
+        await self._fetch(f"/filetag/{folder_id}", method="DELETE")
+
+    async def move_files(
+        self, file_ids: list[str], folder_id: str | None
+    ) -> None:
+        """Assign one or more files to a folder. Pass folder_id=None or '' to
+        move them back to Unfiled."""
+        await self._fetch(
+            "/file/update-tags",
+            method="POST",
+            json_body={"file_id_list": file_ids, "filetag_id": folder_id or ""},
+        )
